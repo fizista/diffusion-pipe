@@ -856,8 +856,10 @@ if __name__ == '__main__':
 
         if is_main_process() and step % config['logging_steps'] == 0:
             tb_writer.add_scalar(f'train/loss', loss, x_axis)
+            tb_writer.add_scalar(f'train/lr', optimizer.param_groups[0]['lr'], x_axis)
             if wandb_enable:
                 wandb.log({'train/loss': loss, 'step': x_axis})
+                wandb.log({'train/lr': optimizer.param_groups[0]['lr'], 'step': x_axis})
             if optimizer.__class__.__name__ == 'Prodigy':
                 prodigy_d = get_prodigy_d(optimizer)
                 tb_writer.add_scalar(f'train/prodigy_d', prodigy_d, x_axis)
