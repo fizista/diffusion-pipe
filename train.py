@@ -869,6 +869,26 @@ if __name__ == '__main__':
                     tb_writer.add_histogram(f'train/automagic_lrs', lrs, x_axis)
                     tb_writer.add_scalar(f'train/automagic_avg_lr', avg_lr, x_axis)
 
+            # Deepspeed stores the last calculated gradient norm
+            # (used for clipping) in the “cached_grad_norm” attribute.
+            # We use getattr to safely check if the attribute exists.
+            grad_norm = getattr(model_engine, 'cached_grad_norm', None)
+
+            if grad_norm is not None:
+                tb_writer.add_scalar(f'train/grad_norm', grad_norm, x_axis)
+                if wandb_enable:
+                    wandb.log({'train/grad_norm': grad_norm, 'step': x_axis})
+
+            with torch.no_grad():
+                total_param_norm = 0.0
+                for p in parameters_to_train:
+                    if p.requires_grad:
+                        total_param_norm += p.norm(2).item()
+
+            tb_writer.add_scalar('train/total_param_norm', total_param_norm, x_axis)
+            if wandb_enable:
+                wandb.log({'train/total_param_norm': total_param_norm, 'step': x_axis})
+
         if (config['eval_every_n_steps'] and step % config['eval_every_n_steps'] == 0) or (finished_epoch and config['eval_every_n_epochs'] and epoch % config['eval_every_n_epochs'] == 0):
             evaluate(model, model_engine, eval_dataloaders, tb_writer, x_axis, config['eval_gradient_accumulation_steps'], disable_block_swap_for_eval)
 
