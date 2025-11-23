@@ -909,6 +909,39 @@ if __name__ == '__main__':
             if wandb_enable:
                 wandb.log({'train/total_param_norm': total_param_norm, 'step': x_axis})
 
+                # Współczynnik do konwersji Bajtów na Gigabajty
+                gb_divisor = 1024 ** 3
+
+            # VRAM Metrics (GPU Memory)
+            if torch.cuda.is_available():
+                # Memory actively used by tensors
+                allocated_vram_gb = torch.cuda.memory_allocated() / gb_divisor
+                # Memory reserved by PyTorch
+                reserved_vram_gb = torch.cuda.memory_reserved() / gb_divisor
+                # Peak usage since the start of the script
+                peak_vram_gb = torch.cuda.max_memory_allocated() / gb_divisor
+
+                tb_writer.add_scalar('memory/vram_allocated_gb', allocated_vram_gb, x_axis)
+                tb_writer.add_scalar('memory/vram_reserved_gb', reserved_vram_gb, x_axis)
+                tb_writer.add_scalar('memory/vram_peak_gb', peak_vram_gb, x_axis)
+
+                if wandb_enable:
+                    wandb.log({
+                        'memory/vram_allocated_gb': allocated_vram_gb,
+                        'memory/vram_reserved_gb': reserved_vram_gb,
+                        'memory/vram_peak_gb': peak_vram_gb,
+                        'step': x_axis
+                    })
+
+            # RAM metrics (System Memory) - only for the main process
+            # Note: This does not track the memory of worker processes (dataloader workers).
+            process = psutil.Process(os.getpid())
+            ram_rss_gb = process.memory_info().rss / gb_divisor  # RSS = Resident Set Size
+
+            tb_writer.add_scalar('memory/ram_main_process_gb', ram_rss_gb, x_axis)
+            if wandb_enable:
+                wandb.log({'memory/ram_main_process_gb': ram_rss_gb, 'step': x_axis})
+
         if (config['eval_every_n_steps'] and step % config['eval_every_n_steps'] == 0) or (finished_epoch and config['eval_every_n_epochs'] and epoch % config['eval_every_n_epochs'] == 0):
             evaluate(model, model_engine, eval_dataloaders, tb_writer, x_axis, config['eval_gradient_accumulation_steps'], disable_block_swap_for_eval)
 
