@@ -909,39 +909,6 @@ if __name__ == '__main__':
             if wandb_enable:
                 wandb.log({'train/total_param_norm': total_param_norm, 'step': x_axis})
 
-                # Współczynnik do konwersji Bajtów na Gigabajty
-                gb_divisor = 1024 ** 3
-
-                # 1. Metryki VRAM (Pamięć GPU)
-                if torch.cuda.is_available():
-                    # Pamięć aktywnie używana przez tensory
-                    allocated_vram_gb = torch.cuda.memory_allocated() / gb_divisor
-                    # Pamięć zarezerwowana przez PyTorch (zawsze > allocated)
-                    reserved_vram_gb = torch.cuda.memory_reserved() / gb_divisor
-                    # Szczytowe użycie od początku działania skryptu
-                    peak_vram_gb = torch.cuda.max_memory_allocated() / gb_divisor
-
-                    tb_writer.add_scalar('memory/vram_allocated_gb', allocated_vram_gb, x_axis)
-                    tb_writer.add_scalar('memory/vram_reserved_gb', reserved_vram_gb, x_axis)
-                    tb_writer.add_scalar('memory/vram_peak_gb', peak_vram_gb, x_axis)
-
-                    if wandb_enable:
-                        wandb.log({
-                            'memory/vram_allocated_gb': allocated_vram_gb,
-                            'memory/vram_reserved_gb': reserved_vram_gb,
-                            'memory/vram_peak_gb': peak_vram_gb,
-                            'step': x_axis
-                        })
-
-                # 2. Metryki RAM (Pamięć Systemowa) - tylko dla głównego procesu
-                # Uwaga: To nie śledzi pamięci procesów roboczych (dataloader workers)
-                process = psutil.Process(os.getpid())
-                ram_rss_gb = process.memory_info().rss / gb_divisor  # RSS = Resident Set Size
-
-                tb_writer.add_scalar('memory/ram_main_process_gb', ram_rss_gb, x_axis)
-                if wandb_enable:
-                    wandb.log({'memory/ram_main_process_gb': ram_rss_gb, 'step': x_axis})
-
         if (config['eval_every_n_steps'] and step % config['eval_every_n_steps'] == 0) or (finished_epoch and config['eval_every_n_epochs'] and epoch % config['eval_every_n_epochs'] == 0):
             evaluate(model, model_engine, eval_dataloaders, tb_writer, x_axis, config['eval_gradient_accumulation_steps'], disable_block_swap_for_eval)
 
