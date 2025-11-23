@@ -21,6 +21,7 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import multiprocess as mp
 import numpy as np
+import psutil
 
 from utils import dataset as dataset_util
 from utils import common
@@ -783,11 +784,30 @@ if __name__ == '__main__':
     total_steps_for_scheduler = config['epochs'] * steps_per_epoch
     lr_scheduler = create_scheduler(optimizer, scheduler_config, total_steps_for_scheduler)
 
+    raw_warmup = config.get('warmup_steps', 0)
+    warmup_steps = 0
 
-    if config['warmup_steps'] > 0:
-        warmup_steps = config['warmup_steps']
-        warmup_scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1/warmup_steps, total_iters=warmup_steps)
-        lr_scheduler = torch.optim.lr_scheduler.SequentialLR(optimizer, schedulers=[warmup_scheduler, lr_scheduler], milestones=[warmup_steps])
+    if raw_warmup > 0:
+        if raw_warmup <= 1.0:
+            # If the value is between 0 and 1, we treat it as a percentage of total steps.
+            warmup_steps = int(raw_warmup * total_steps_for_scheduler)
+            if is_main_process():
+                print(
+                    f'Warmup: calculated {warmup_steps} steps from percentage {raw_warmup} (Total steps: {total_steps})')
+        else:
+            # If the value is > 1, we treat it as the literal number of steps
+            warmup_steps = int(raw_warmup)
+
+    # We apply warmup only if the calculated number of steps is > 0
+    if warmup_steps > 0:
+        # We use max(1, ...) to avoid division by zero in rare cases.
+        start_factor = 1.0 / max(1, warmup_steps)
+        warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
+            optimizer, start_factor=start_factor, total_iters=warmup_steps
+        )
+        lr_scheduler = torch.optim.lr_scheduler.SequentialLR(
+            optimizer, schedulers=[warmup_scheduler, lr_scheduler], milestones=[warmup_steps]
+        )
     model_engine.lr_scheduler = lr_scheduler
 
     step = 1
@@ -888,6 +908,39 @@ if __name__ == '__main__':
             tb_writer.add_scalar('train/total_param_norm', total_param_norm, x_axis)
             if wandb_enable:
                 wandb.log({'train/total_param_norm': total_param_norm, 'step': x_axis})
+
+                # Współczynnik do konwersji Bajtów na Gigabajty
+                gb_divisor = 1024 ** 3
+
+                # 1. Metryki VRAM (Pamięć GPU)
+                if torch.cuda.is_available():
+                    # Pamięć aktywnie używana przez tensory
+                    allocated_vram_gb = torch.cuda.memory_allocated() / gb_divisor
+                    # Pamięć zarezerwowana przez PyTorch (zawsze > allocated)
+                    reserved_vram_gb = torch.cuda.memory_reserved() / gb_divisor
+                    # Szczytowe użycie od początku działania skryptu
+                    peak_vram_gb = torch.cuda.max_memory_allocated() / gb_divisor
+
+                    tb_writer.add_scalar('memory/vram_allocated_gb', allocated_vram_gb, x_axis)
+                    tb_writer.add_scalar('memory/vram_reserved_gb', reserved_vram_gb, x_axis)
+                    tb_writer.add_scalar('memory/vram_peak_gb', peak_vram_gb, x_axis)
+
+                    if wandb_enable:
+                        wandb.log({
+                            'memory/vram_allocated_gb': allocated_vram_gb,
+                            'memory/vram_reserved_gb': reserved_vram_gb,
+                            'memory/vram_peak_gb': peak_vram_gb,
+                            'step': x_axis
+                        })
+
+                # 2. Metryki RAM (Pamięć Systemowa) - tylko dla głównego procesu
+                # Uwaga: To nie śledzi pamięci procesów roboczych (dataloader workers)
+                process = psutil.Process(os.getpid())
+                ram_rss_gb = process.memory_info().rss / gb_divisor  # RSS = Resident Set Size
+
+                tb_writer.add_scalar('memory/ram_main_process_gb', ram_rss_gb, x_axis)
+                if wandb_enable:
+                    wandb.log({'memory/ram_main_process_gb': ram_rss_gb, 'step': x_axis})
 
         if (config['eval_every_n_steps'] and step % config['eval_every_n_steps'] == 0) or (finished_epoch and config['eval_every_n_epochs'] and epoch % config['eval_every_n_epochs'] == 0):
             evaluate(model, model_engine, eval_dataloaders, tb_writer, x_axis, config['eval_gradient_accumulation_steps'], disable_block_swap_for_eval)
