@@ -952,8 +952,8 @@ if __name__ == '__main__':
             if wandb_enable:
                 wandb.log({'train/total_param_norm': total_param_norm, 'step': x_axis})
 
-                # Współczynnik do konwersji Bajtów na Gigabajty
-                gb_divisor = 1024 ** 3
+            # Conversion factor for bytes to gigabytes
+            gb_divisor = 1024 ** 3
 
             # VRAM Metrics (GPU Memory)
             if torch.cuda.is_available():
