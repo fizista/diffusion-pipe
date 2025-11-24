@@ -817,7 +817,7 @@ if __name__ == '__main__':
             warmup_steps = int(raw_warmup * total_steps_for_scheduler)
             if is_main_process():
                 print(
-                    f'Warmup: calculated {warmup_steps} steps from percentage {raw_warmup} (Total steps: {total_steps})')
+                    f'Warmup: calculated {warmup_steps} steps from percentage {raw_warmup} (Total steps: {total_steps_for_scheduler})')
         else:
             # If the value is > 1, we treat it as the literal number of steps
             warmup_steps = int(raw_warmup)
