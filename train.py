@@ -1100,16 +1100,6 @@ if __name__ == '__main__':
                     tb_writer.add_histogram(f'train/automagic_lrs', lrs, x_axis)
                     tb_writer.add_scalar(f'train/automagic_avg_lr', avg_lr, x_axis)
 
-            # Deepspeed stores the last calculated gradient norm
-            # (used for clipping) in the “cached_grad_norm” attribute.
-            # We use getattr to safely check if the attribute exists.
-            grad_norm = getattr(model_engine, 'cached_grad_norm', None)
-
-            if grad_norm is not None:
-                tb_writer.add_scalar(f'train/grad_norm', grad_norm, x_axis)
-                if wandb_enable:
-                    wandb.log({'train/grad_norm': grad_norm, 'step': x_axis})
-
             with torch.no_grad():
                 total_param_norm = 0.0
                 for p in parameters_to_train:
